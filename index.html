@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#111214">
+<meta name="theme-color" content="#0f1218">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,27 +13,38 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
+  /* Layout: one thumb-driven column, bottom tab bar, sets as big tap rows.
+     Accent borrows the blue of a 20 kg competition plate. Dark-first. */
   :root {
-    --bg: #111214;
-    --surface: #1b1d21;
-    --surface-2: #24272c;
-    --line: #2f333a;
-    --text: #eceef1;
-    --muted: #8b919b;
-    --accent: #c6f432;
-    --accent-ink: #151a00;
-    --done: #2e3b12;
+    --bg: #0f1218;
+    --surface: #171b23;
+    --surface-2: #1f2430;
+    --line: #2a3140;
+    --text: #e8ecf3;
+    --muted: #8a93a5;
+    --accent: #4d7cff;
+    --accent-ink: #ffffff;
+    --done: #1a2748;
     --danger: #ff6b5e;
+    --scrim: rgba(5, 8, 14, 0.6);
     --radius: 14px;
     --tap: 48px;
+    color-scheme: dark;
   }
   @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
-      --bg: #f4f4f1; --surface: #ffffff; --surface-2: #ececE7; --line: #dcdcd5;
-      --text: #16181b; --muted: #6a6f77; --accent: #4f6b00; --accent-ink: #ffffff; --done: #e6efcc;
+      --bg: #f3f5f9; --surface: #ffffff; --surface-2: #e9edf4; --line: #d6dce7;
+      --text: #121722; --muted: #5f6878; --accent: #2457e6; --accent-ink: #ffffff; --done: #dde6ff;
+      --danger: #d23a2c; --scrim: rgba(18, 23, 34, 0.35); color-scheme: light;
     }
   }
+  :root[data-theme="light"] {
+    --bg: #f3f5f9; --surface: #ffffff; --surface-2: #e9edf4; --line: #d6dce7;
+    --text: #121722; --muted: #5f6878; --accent: #2457e6; --accent-ink: #ffffff; --done: #dde6ff;
+    --danger: #d23a2c; --scrim: rgba(18, 23, 34, 0.35); color-scheme: light;
+  }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; background: var(--bg); color: var(--text); }
   body {
     font: 16px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -43,21 +54,26 @@
   .num { font-variant-numeric: tabular-nums; }
   header {
     position: sticky; top: 0; z-index: 5;
-    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
     background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(10px);
     display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   }
   header h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
   header .meta { color: var(--muted); font-size: 14px; }
-  main { padding: 4px 16px 24px; max-width: 640px; margin: 0 auto; }
+  main {
+    padding-block: 4px 24px; max-width: 640px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
 
   /* Bottom tab bar — thumb reachable */
   nav.tabs {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
     display: grid; grid-template-columns: repeat(4, 1fr);
     background: var(--surface); border-top: 1px solid var(--line);
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px);
   }
   nav.tabs button {
     appearance: none; border: 0; background: none; color: var(--muted);
@@ -149,6 +165,15 @@
     opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; white-space: nowrap;
   }
   .toast.show { opacity: 1; }
+  .sheet-scrim { position: fixed; inset: 0; z-index: 30; background: var(--scrim); display: grid; align-items: end; }
+  .sheet {
+    background: var(--surface); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
+    padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    display: grid; gap: 10px; max-width: 640px; width: 100%; margin: 0 auto;
+  }
+  .sheet p { margin: 0 0 6px; font-size: 17px; }
+  button:focus-visible, .day:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   code { background: var(--surface-2); padding: 1px 5px; border-radius: 6px; font-size: 14px; }
 </style>
 </head>
@@ -166,6 +191,13 @@
   <button data-tab="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Data</button>
 </nav>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="sheet-scrim" id="sheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetMsg">
+    <p id="sheetMsg"></p>
+    <button class="btn primary block" id="sheetOk">OK</button>
+    <button class="btn ghost block" id="sheetCancel">Cancel</button>
+  </div>
+</div>
 
 <script>
 /* ==========================================================================
@@ -427,14 +459,14 @@ function toggleSet(ei, si) {
   });
 }
 
-function finishWorkout() {
+async function finishWorkout() {
   const a = db.active;
   const exercises = a.exercises
     .map(e => ({ name: e.name, sets: e.sets.filter(s => s.done).map(({ w, r }) => ({ w: +w || 0, r: +r || 0 })) }))
     .filter(e => e.sets.length);
 
   if (!exercises.length) {
-    if (!confirm("No sets ticked. Discard this workout?")) return;
+    if (!(await ask("No sets ticked yet. Discard this workout?", "Discard"))) return;
     update(d => { d.active = null; });
     return;
   }
@@ -599,13 +631,17 @@ function viewData() {
     <p class="muted small">Only changes the label — numbers aren't converted.</p>
 
     <h2>Backup</h2>
-    <p class="muted small">Everything is stored on this device only. Export a backup now and then,
+    <p class="muted small">Everything is stored in this browser only. Back up now and then,
       especially before clearing browser data or switching phones.</p>
     <div style="display:grid; gap:10px">
-      <button class="btn primary block" data-action="export">Export backup (.json)</button>
-      <button class="btn block" data-action="import">Import backup</button>
+      <button class="btn primary block" data-action="copy-backup">Copy backup</button>
+      <button class="btn block" data-action="export">Download backup file</button>
+      <button class="btn block" data-action="import">Restore from file</button>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
+    <h2>Restore from text</h2>
+    <textarea id="restoreText" class="notes" spellcheck="false" placeholder="Paste a copied backup here"></textarea>
+    <button class="btn block" style="margin-top:10px; width:100%" data-action="restore-text">Restore pasted backup</button>
 
     <h2>Danger zone</h2>
     <button class="btn ghost danger block" data-action="reset">Erase all data</button>
@@ -631,10 +667,11 @@ $app.addEventListener("click", e => {
     case "remove-set": update(d => { d.active.exercises[ei].sets.pop(); }); break;
     case "finish": finishWorkout(); break;
     case "discard":
-      if (confirm("Discard this workout? Nothing will be saved.")) update(d => { d.active = null; });
+      ask("Discard this workout? Nothing will be saved.", "Discard").then(ok => ok && update(d => { d.active = null; }));
       break;
     case "delete-session":
-      if (confirm("Delete this workout from history?")) update(d => { d.sessions = d.sessions.filter(s => s.id !== el.dataset.id); });
+      ask("Delete this workout from history?", "Delete").then(ok => ok &&
+        update(d => { d.sessions = d.sessions.filter(s => s.id !== el.dataset.id); }));
       break;
     case "save-plan":
       update(d => { d.planText = ui.planDraft; }, { rerender: false });
@@ -644,10 +681,13 @@ $app.addEventListener("click", e => {
     case "units": update(d => { d.units = el.dataset.units; }); break;
     case "export": exportBackup(); break;
     case "import": document.getElementById("importFile").click(); break;
+    case "copy-backup": copyBackup(); break;
+    case "restore-text": restoreFrom(document.getElementById("restoreText").value); break;
     case "reset":
-      if (confirm("Erase ALL workouts and your plan? Export a backup first if unsure.") && confirm("Really erase everything?")) {
+      ask("Erase all workouts and reset the plan? Copy a backup first if unsure.", "Erase everything").then(ok => {
+        if (!ok) return;
         db = freshDb(); saveDb(); ui.tab = "workout"; render(); toast("All data erased");
-      }
+      });
       break;
   }
 });
@@ -681,13 +721,42 @@ $app.addEventListener("change", e => {
   if (e.target.id !== "importFile") return;
   const file = e.target.files[0];
   if (!file) return;
-  file.text().then(txt => {
-    const data = JSON.parse(txt);
-    if (!Array.isArray(data.sessions) || typeof data.planText !== "string") throw new Error("Not a Gym Tracker backup");
-    if (!confirm(`Replace current data with backup (${data.sessions.length} workouts)?`)) return;
-    db = migrate(data); saveDb(); render(); toast("Backup restored");
-  }).catch(err => toast(err.message || "Couldn't read that file"));
+  file.text().then(restoreFrom).catch(() => toast("Couldn't read that file"));
 });
+
+async function restoreFrom(text) {
+  let data;
+  try { data = JSON.parse(text); } catch { toast("That isn't valid backup text"); return; }
+  if (!Array.isArray(data.sessions) || typeof data.planText !== "string") { toast("Not a Gym Tracker backup"); return; }
+  if (!(await ask(`Replace current data with this backup (${data.sessions.length} workouts)?`, "Restore"))) return;
+  db = migrate(data); saveDb(); render(); toast("Backup restored");
+}
+
+function copyBackup() {
+  const text = JSON.stringify(db);
+  navigator.clipboard?.writeText(text).then(() => toast("Backup copied — paste it into Notes or email"))
+    .catch(() => {
+      const ta = document.getElementById("restoreText");
+      ta.value = text; ta.focus(); ta.select();
+      toast("Select all and copy the text in the box");
+    });
+}
+
+// In-page replacement for confirm(): returns a Promise<boolean>.
+// (Native dialogs are blocked in some embedded viewers, and this looks better anyway.)
+function ask(message, okLabel = "OK") {
+  const sheet = document.getElementById("sheet");
+  document.getElementById("sheetMsg").textContent = message;
+  const ok = document.getElementById("sheetOk"), cancel = document.getElementById("sheetCancel");
+  ok.textContent = okLabel;
+  sheet.hidden = false; ok.focus();
+  return new Promise(resolve => {
+    const done = v => { sheet.hidden = true; ok.onclick = cancel.onclick = sheet.onclick = null; resolve(v); };
+    ok.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+    sheet.onclick = e => { if (e.target === sheet) done(false); };
+  });
+}
 
 document.getElementById("tabs").addEventListener("click", e => {
   const b = e.target.closest("button[data-tab]");
