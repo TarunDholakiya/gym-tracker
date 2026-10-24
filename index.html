@@ -175,6 +175,29 @@
   .hero .meta b { display: block; font-family: var(--font-display); font-size: 28px; line-height: 1; }
   .hero .meta span { font-size: 13px; color: var(--muted); }
 
+  /* Get-ready flow (the gap between dinner and the gym) */
+  .gymline { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); margin: -4px 0 14px; }
+  .gymline b { color: var(--text); font-weight: 700; }
+  .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--plate); flex: none; animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  .ready { display: grid; gap: 8px; margin-bottom: 14px; }
+  .ready-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .ready-head b { font-size: 17px; text-wrap: balance; }
+  .ready-head span { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--plate); white-space: nowrap; }
+  .ritem {
+    appearance: none; width: 100%; text-align: left; display: flex; align-items: center; gap: 12px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; font-weight: 600;
+  }
+  .ritem .box { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--line); display: grid; place-items: center; flex: none; color: transparent; }
+  .ritem .box svg { width: 16px; height: 16px; }
+  .ritem[aria-pressed="true"] { color: var(--muted); }
+  .ritem[aria-pressed="true"] .box { background: var(--plate); border-color: transparent; color: var(--plate-ink); }
+  .stack { display: grid; gap: 8px; }
+  input.time {
+    -webkit-appearance: none; appearance: none; background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 12px; height: 42px; padding: 0 12px;
+    font-family: var(--font-display); font-size: 22px; font-weight: 700; min-width: 120px; text-align: center;
+  }
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
   .stat b { display: block; font-family: var(--font-display); font-size: 30px; line-height: 1; }
@@ -438,7 +461,12 @@ Cross Trainer | 1x20min`;
 /* ---------- Persistence ------------------------------------------------- */
 
 function freshDb() {
-  return { version: 2, units: "kg", rest: { weight: 90, bw: 45 }, planText: SAMPLE_PLAN, sessions: [], active: null };
+  return {
+    version: 2, units: "kg", rest: { weight: 90, bw: 45 },
+    gym: { time: "21:00", lead: 15 },   // when you plan to leave, and how early "get ready" starts
+    ready: null,                        // today's get-ready checklist: { date, items, leftAt }
+    planText: SAMPLE_PLAN, sessions: [], active: null,
+  };
 }
 
 function loadDb() {
@@ -456,6 +484,7 @@ function migrate(data) {
   const db = { ...freshDb(), ...data };
   if (!Array.isArray(db.sessions)) db.sessions = [];
   db.rest = { ...freshDb().rest, ...(data.rest || {}) };
+  db.gym = { ...freshDb().gym, ...(data.gym || {}) };
   if ((data.version ?? 1) < 2) {
     // v2 added "bw" markers. Upgrade the built-in plan only if it was never edited.
     if (db.planText === SAMPLE_PLAN.replace(/ bw$/gm, "")) db.planText = SAMPLE_PLAN;
@@ -840,8 +869,9 @@ function viewToday() {
   const prsThisMonth = db.sessions.filter(s => { const d = new Date(s.date); return d.getMonth() === month && d.getFullYear() === year; })
     .reduce((n, s) => n + (s.prs?.length || 0), 0);
 
-  const hero = ti === -1 ? restHero(days) : dayHero(days[ti], ti, scheduled, doneToday);
-  const others = days.map((d, i) => ({ d, i })).filter(x => x.i !== ti);
+  const gym = ti === -1 ? null : gymWindow(doneToday);
+  ui.gymPhase = gym?.phase ?? null;
+  const hero = ti === -1 ? restHero(days) : dayHero(days[ti], ti, scheduled, doneToday, gym);
 
   return {
     plate: ti === -1 ? 1 : days[ti].plate,
@@ -861,31 +891,88 @@ function viewToday() {
         <div class="stat"><b class="num">${prsThisMonth}</b><span>PRs this month</span></div>
         <div class="stat"><b class="num">${db.sessions.length}</b><span>All-time</span></div>
       </div>
-      <div class="section-label">${ti === -1 ? "Train anyway" : "Other workouts"}</div>
-      <div class="daylist">
-        ${others.map(({ d, i }) => `<button class="dayrow plate-${d.plate}" data-action="start" data-day="${i}">
-          <span class="dot"></span>
-          <span><span class="t">${esc(d.name)}</span><br><span class="s">${d.weekdays.map(w => WD_SHORT[w]).join(" · ") || `${d.exercises.length} exercises`}</span></span>
-          ${ICON.chevron}</button>`).join("")}
-      </div>`,
+      <p class="small muted" style="text-align:center; margin-top:22px">Doing a different day?
+        <button class="link" style="padding:4px" data-action="go" data-tab="plan">Pick it from your plan</button></p>`,
   };
 }
 
-function dayHero(day, i, scheduled, doneToday) {
+function dayHero(day, i, scheduled, doneToday, gym) {
   const secs = sectionsOf(day);
   const sets = day.exercises.reduce((n, e) => n + (e.kind === "time" ? 0 : e.sets), 0);
-  return `<section class="hero plate-${day.plate}">
-    <div class="kicker">${doneToday ? "Done today · go again?" : scheduled ? "Today's workout" : "Up next"}</div>
-    <h2 class="display">${esc(day.name)}</h2>
-    ${secs.length ? `<div class="chips">${secs.map(s => `<span class="chip plate">${esc(s)}</span>`).join("")}</div>` : ""}
+  const getReady = gym && (gym.phase === "ready" || gym.phase === "late");
+  const kicker = doneToday ? "Done today · go again?"
+    : gym?.phase === "left" ? `On your way · left ${fmtTime(new Date(db.ready.leftAt))}`
+    : scheduled ? "Today's workout" : "Up next";
+
+  const middle = getReady ? readyChecklist(gym) : `
+    ${gym?.phase === "countdown" ? `<div class="gymline"><span class="pulse"></span><span>Gym at <b>${fmtTime(gym.target)}</b> · get ready in <b id="gymCountdown" class="num">${fmtLeft(gym.readyAt)}</b></span></div>` : ""}
     <div class="meta">
       <div><b class="num">${day.exercises.length}</b><span>exercises</span></div>
       <div><b class="num">${sets}</b><span>sets</span></div>
       <div><b class="num">~${estimateMinutes(day)}</b><span>minutes</span></div>
-    </div>
-    <button class="btn primary big block" data-action="start" data-day="${i}">Start workout</button>
+    </div>`;
+
+  return `<section class="hero plate-${day.plate}">
+    <div class="kicker">${kicker}</div>
+    <h2 class="display">${esc(day.name)}</h2>
+    ${secs.length && !getReady ? `<div class="chips">${secs.map(s => `<span class="chip plate">${esc(s)}</span>`).join("")}</div>` : ""}
+    ${middle}
+    ${getReady
+      ? `<div class="stack"><button class="btn primary big block" data-action="leave">I'm heading out</button>
+         <button class="btn ghost block" data-action="start" data-day="${i}">Already at the gym? Start workout</button></div>`
+      : `<button class="btn primary big block" data-action="start" data-day="${i}">Start workout</button>`}
   </section>`;
 }
+
+/* ---------- Get-ready flow ----------------------------------------------
+   The hard part isn't the workout, it's getting off the couch. On gym days the
+   hero counts down to your gym time, then turns into a 3-step checklist that
+   ends with "I'm heading out". Each step is tiny on purpose.
+-------------------------------------------------------------------------- */
+
+const READY_ITEMS = [["clothes", "Gym clothes on"], ["bottle", "Water bottle filled"], ["shoes", "Shoes on"]];
+const todayKey = () => new Date().toDateString();
+const readyToday = () => (db.ready?.date === todayKey() ? db.ready : null);
+
+function gymWindow(doneToday, now = new Date()) {
+  if (!db.gym.time || doneToday || db.active) return null;
+  const [h, m] = db.gym.time.split(":").map(Number);
+  const target = new Date(now); target.setHours(h, m, 0, 0);
+  const readyAt = new Date(target - db.gym.lead * 60000);
+  if (readyToday()?.leftAt) return { phase: "left", target, readyAt };
+  if (now < readyAt) return { phase: "countdown", target, readyAt };
+  if (now < target) return { phase: "ready", target, readyAt };
+  if (now < target.getTime() + 2 * 3600000) return { phase: "late", target, readyAt };
+  return null;
+}
+
+function readyChecklist(gym) {
+  const items = readyToday()?.items ?? {};
+  const late = gym.phase === "late";
+  return `<div class="ready">
+    <div class="ready-head"><b>${late ? `It's past ${fmtTime(gym.target)}. Just shoes on.` : "Time to get ready"}</b>
+      ${late ? "" : `<span id="gymCountdown" class="num">leave in ${fmtLeft(gym.target)}</span>`}</div>
+    ${READY_ITEMS.map(([k, label]) => `<button class="ritem" data-action="ready-item" data-k="${k}" aria-pressed="${!!items[k]}">
+      <span class="box">${ICON.check}</span>${label}</button>`).join("")}
+  </div>`;
+}
+
+const fmtTime = d => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function fmtLeft(when) {
+  const mins = Math.max(0, Math.ceil((when - Date.now()) / 60000));
+  if (mins < 1) return "now";
+  return mins >= 60 ? `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m` : `${mins}m`;
+}
+
+// Keep the countdown fresh; re-render only when the phase changes.
+setInterval(() => {
+  if (ui.tab !== "today" || db.active || ui.summaryId) return;
+  const days = plan().days, ti = todayIndex(days);
+  const gym = ti === -1 ? null : gymWindow(db.sessions.some(s => sameDay(new Date(s.date), new Date())));
+  if ((gym?.phase ?? null) !== ui.gymPhase) { render(); return; }
+  const el = document.getElementById("gymCountdown");
+  if (el && gym) el.textContent = gym.phase === "countdown" ? fmtLeft(gym.readyAt) : `leave in ${fmtLeft(gym.target)}`;
+}, 15000);
 
 function restHero(days) {
   const today = new Date().getDay();
@@ -1039,12 +1126,12 @@ function viewPlan() {
   const { days, errors } = parsePlan(text);
   const dirty = ui.planDraft !== null && ui.planDraft !== db.planText;
   return {
-    top: topbar("Plan", "Your weekly program"),
+    top: topbar("Plan", "Tap a day to start it"),
     body: `
       <div class="daylist" style="margin-top:6px">
-        ${days.map(d => `<div class="dayrow plate-${d.plate}"><span class="dot"></span>
-          <span style="min-width:0"><span class="t">${esc(d.name)}</span><br><span class="s">${d.weekdays.map(w => WD_SHORT[w]).join(" · ") || "Any day"} · ${d.exercises.length} exercises</span></span>
-          <span class="s num">~${estimateMinutes(d)} min</span></div>`).join("")}
+        ${days.map((d, i) => `<button class="dayrow plate-${d.plate}" data-action="start" data-day="${i}" aria-label="Start ${esc(d.name)}"><span class="dot"></span>
+          <span style="min-width:0"><span class="t">${esc(d.name)}</span><br><span class="s">${d.weekdays.map(w => WD_SHORT[w]).join(" · ") || "Any day"} · ${d.exercises.length} exercises · ~${estimateMinutes(d)} min</span></span>
+          <span class="chip plate">Start</span></button>`).join("")}
       </div>
       <div class="section-label">Edit</div>
       <textarea id="planText" class="code" data-field="plan" spellcheck="false" autocapitalize="off" autocorrect="off">${esc(text)}</textarea>
@@ -1074,6 +1161,17 @@ function viewSettings() {
       <div class="card">
         ${stepper("weight", "Weighted sets", "Starts when you tick a set")}
         ${stepper("bw", "Bodyweight sets", "Jumping jacks, crunches, dips")}
+      </div>
+      <div class="section-label">Gym time</div>
+      <div class="card">
+        <div class="setting"><span><b>Leave for the gym at</b><br><span class="small muted">${db.gym.time ? "Shows a countdown on gym days" : "Off"}</span></span>
+          <input type="time" id="gymTime" class="time num" value="${esc(db.gym.time)}" aria-label="Gym time"></div>
+        <div class="setting"><span><b>Start getting ready</b><br><span class="small muted">Minutes before gym time</span></span>
+          <span class="stepper"><button class="btn" data-action="lead" data-d="-5" aria-label="5 minutes less">−</button>
+          <output class="num">${db.gym.lead}m</output>
+          <button class="btn" data-action="lead" data-d="5" aria-label="5 minutes more">+</button></span></div>
+        <div class="setting"><span class="small muted">Clear the time to turn this off.</span>
+          ${db.gym.time ? `<button class="link" data-action="gym-off">Turn off</button>` : ""}</div>
       </div>
       <div class="section-label">Units</div>
       <div class="card"><div class="setting"><span><b>Weight label</b><br><span class="small muted">Numbers aren't converted</span></span>
@@ -1131,6 +1229,19 @@ document.addEventListener("click", e => {
     case "revert-plan": ui.planDraft = null; render(); break;
     case "rest": update(d => { d.rest[el.dataset.k] = clamp(d.rest[el.dataset.k] + +el.dataset.d, 0, 600); }); break;
     case "units": update(d => { d.units = el.dataset.units; }); break;
+    case "lead": update(d => { d.gym.lead = clamp(d.gym.lead + +el.dataset.d, 5, 60); }); break;
+    case "gym-off": update(d => { d.gym.time = ""; }); toast("Gym time turned off"); break;
+    case "ready-item": update(d => {
+      if (d.ready?.date !== todayKey()) d.ready = { date: todayKey(), items: {}, leftAt: null };
+      d.ready.items[el.dataset.k] = !d.ready.items[el.dataset.k];
+    }); break;
+    case "leave":
+      update(d => {
+        if (d.ready?.date !== todayKey()) d.ready = { date: todayKey(), items: {}, leftAt: null };
+        d.ready.leftAt = new Date().toISOString();
+      });
+      toast("That's the hard part done. Tap Start when you get there.", 3200);
+      break;
     case "copy-backup": copyBackup(); break;
     case "export": exportBackup(); break;
     case "import": document.getElementById("importFile").click(); break;
@@ -1172,6 +1283,7 @@ $app.addEventListener("toggle", e => {
 }, true);
 
 $app.addEventListener("change", e => {
+  if (e.target.id === "gymTime") { update(d => { d.gym.time = e.target.value; }); return; }
   if (e.target.id !== "importFile" || !e.target.files[0]) return;
   e.target.files[0].text().then(restoreFrom).catch(() => toast("Couldn't read that file"));
 });
