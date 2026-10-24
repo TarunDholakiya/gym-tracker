@@ -4,24 +4,30 @@ A personal workout logger that runs entirely in your phone's browser. No account
 
 - **Works offline**: a service worker caches the app, so it opens at the gym with no signal.
 - **Installable**: open the site on your phone → Share / ⋮ menu → *Add to Home Screen*.
-- **Private**: data lives in the browser's `localStorage` on your device. Use **Data → Export backup** now and then.
+- **Private**: data lives in the browser's `localStorage` on your device. Use **Settings → Copy backup** now and then.
+
+## What it does
+
+- **Today**: week strip, today's workout from your schedule (or a rest-day card), weekly stats.
+- **Workout**: one exercise open at a time, auto-advances when its sets are done. Last session's numbers pre-fill each set; tap ✓ to accept them. Rest timer starts after each set (adjustable in Settings) and beeps when it's over. New personal bests get a PR badge.
+- **Finish**: summary with time, sets, total kg moved and PRs.
+- **Progress**: workout history plus a trend line and best weight for every exercise.
+
+On iPhone: open the site in Safari → Share → *Add to Home Screen*. Note that the home-screen app keeps its own storage, separate from Safari tabs.
 
 ## Editing your plan
 
 Open the **Plan** tab and use this format:
 
 ```
-# Push
-Bench Press | 4x8
-Overhead Press | 3x10
-
-# Pull
-Deadlift | 3x5
-Pull-ups 4x8-10
-Plank              // no target = 3 sets, open reps
+# Chest & Triceps @ Mon, Thu     ← workout day, optional weekdays
+// Chest                         ← section label
+Machine Chest Press | 3x12       ← weighted (kg + reps)
+Triceps Dips | 3x10 bw           ← bodyweight (reps only)
+Treadmill | 1x30min              ← timed (minutes only)
 ```
 
-The app suggests the next day in rotation and pre-fills each set with what you did last time. Tap ✓ on an empty set to accept those numbers.
+Days with `@ weekdays` show up on the right day; without them the app rotates through your days in order.
 
 ## How it's built
 
