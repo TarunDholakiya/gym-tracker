@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111214">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gym">
+<title>Gym Tracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #111214;
+    --surface: #1b1d21;
+    --surface-2: #24272c;
+    --line: #2f333a;
+    --text: #eceef1;
+    --muted: #8b919b;
+    --accent: #c6f432;
+    --accent-ink: #151a00;
+    --done: #2e3b12;
+    --danger: #ff6b5e;
+    --radius: 14px;
+    --tap: 48px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f4f4f1; --surface: #ffffff; --surface-2: #ececE7; --line: #dcdcd5;
+      --text: #16181b; --muted: #6a6f77; --accent: #4f6b00; --accent-ink: #ffffff; --done: #e6efcc;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  }
+  header h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+  header .meta { color: var(--muted); font-size: 14px; }
+  main { padding: 4px 16px 24px; max-width: 640px; margin: 0 auto; }
+
+  /* Bottom tab bar — thumb reachable */
+  nav.tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--surface); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav.tabs button {
+    appearance: none; border: 0; background: none; color: var(--muted);
+    height: 60px; font: inherit; font-size: 13px; font-weight: 600;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  }
+  nav.tabs button svg { width: 22px; height: 22px; }
+  nav.tabs button[aria-current="page"] { color: var(--text); }
+  nav.tabs button[aria-current="page"] svg { color: var(--accent); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px; margin: 12px 0;
+  }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .spread { justify-content: space-between; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 22px 0 6px; }
+  h3 { margin: 0; font-size: 17px; }
+
+  button.btn {
+    appearance: none; border: 1px solid var(--line); background: var(--surface-2); color: var(--text);
+    min-height: var(--tap); padding: 0 16px; border-radius: 12px; font: inherit; font-weight: 600;
+  }
+  button.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.btn.ghost { background: none; }
+  button.btn.danger { color: var(--danger); }
+  button.btn.block { width: 100%; }
+  button.btn:active { transform: scale(0.98); }
+  button.link { appearance: none; border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; padding: 8px 4px; text-decoration: underline; }
+
+  /* Day picker */
+  .days { display: grid; gap: 10px; }
+  .day {
+    text-align: left; width: 100%; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px; color: var(--text); font: inherit;
+  }
+  .day.next { border-color: var(--accent); }
+  .day .tag { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* Set grid */
+  .ex-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .target { color: var(--muted); font-size: 14px; white-space: nowrap; }
+  .last { color: var(--muted); font-size: 13px; margin: -4px 0 10px; }
+  .sets { display: grid; gap: 6px; }
+  .set {
+    display: grid; grid-template-columns: 28px 1fr 1fr var(--tap); gap: 8px; align-items: center;
+    border-radius: 10px; padding: 4px;
+  }
+  .set.done { background: var(--done); }
+  .set .idx { color: var(--muted); font-size: 14px; text-align: center; }
+  .set input {
+    width: 100%; height: 44px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--text); font: inherit; font-size: 18px; text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .set input::placeholder { color: var(--muted); opacity: 0.7; }
+  .set input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .check {
+    width: var(--tap); height: 44px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--muted); display: grid; place-items: center;
+  }
+  .set.done .check { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .set-labels { display: grid; grid-template-columns: 28px 1fr 1fr var(--tap); gap: 8px; padding: 0 4px; font-size: 12px; color: var(--muted); text-align: center; }
+  .ex-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .ex-actions button { flex: 1; min-height: 38px; font-size: 14px; }
+
+  textarea {
+    width: 100%; min-height: 320px; resize: vertical;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  textarea.notes { min-height: 70px; font-family: inherit; }
+  .errors { color: var(--danger); font-size: 14px; margin: 8px 0 0; padding-left: 18px; }
+  details.session summary { list-style: none; cursor: pointer; }
+  details.session summary::-webkit-details-marker { display: none; }
+  .session-ex { margin-top: 10px; font-size: 15px; }
+  .session-ex .sets-line { color: var(--muted); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); font-size: 13px; color: var(--muted); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .seg button { appearance: none; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 10px 16px; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 12px; }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+  code { background: var(--surface-2); padding: 1px 5px; border-radius: 6px; font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Workout</h1>
+  <span class="meta num" id="meta"></span>
+</header>
+<main id="app"></main>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="workout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>Workout</button>
+  <button data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 5h16M4 12h16M4 19h10"/></svg>History</button>
+  <button data-tab="plan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Plan</button>
+  <button data-tab="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Data</button>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ==========================================================================
+   Gym Tracker — one file, no build step, no dependencies.
+
+   The mental model (worth carrying into any UI work, Kotlin/Compose included):
+
+     state  ──render()──▶  DOM
+       ▲                     │
+       └──── update(fn) ◀────┘  (user events)
+
+   1. All data lives in ONE object (`db`). Nothing important is stored in the DOM.
+   2. `render()` is a pure-ish function of state: same db → same screen.
+   3. Events never poke the DOM directly; they change state, then re-render.
+   4. The plan is DATA parsed from plain text, not code. Edit text, not logic.
+
+   It's the same idea as Compose's `UiState` + `@Composable fun Screen(state)`,
+   or MVI: a single source of truth makes "what's on screen?" a question you can
+   answer by reading one object.
+   ========================================================================== */
+
+const STORAGE_KEY = "gym-tracker:v1";
+
+const SAMPLE_PLAN = `# Push
+Bench Press | 4x8
+Overhead Press | 3x10
+Incline Dumbbell Press | 3x10
+Triceps Pushdown | 3x12
+
+# Pull
+Deadlift | 3x5
+Pull-ups | 4x8
+Barbell Row | 3x10
+Biceps Curl | 3x12
+
+# Legs
+Squat | 4x8
+Romanian Deadlift | 3x10
+Leg Press | 3x12
+Calf Raise | 4x15`;
+
+/* ---------- Persistence -------------------------------------------------- */
+
+function freshDb() {
+  return { version: 1, units: "kg", planText: SAMPLE_PLAN, sessions: [], active: null };
+}
+
+function loadDb() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return freshDb();
+    return migrate(JSON.parse(raw));
+  } catch (e) {
+    console.warn("Could not load saved data", e);
+    return freshDb();
+  }
+}
+
+// Every schema change bumps `version` and adds a step here. Old backups keep working.
+function migrate(data) {
+  const db = { ...freshDb(), ...data };
+  if (!Array.isArray(db.sessions)) db.sessions = [];
+  return db;
+}
+
+function saveDb() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  } catch (e) {
+    toast("Couldn't save — storage full or blocked");
+  }
+}
+
+let db = loadDb();
+// UI-only state (which tab, unsaved edits) — deliberately NOT persisted.
+let ui = { tab: "workout", openSession: null, planDraft: null };
+
+// The single way state changes: mutate inside fn, then persist + re-render.
+function update(fn, { rerender = true } = {}) {
+  fn(db);
+  saveDb();
+  if (rerender) render();
+}
+
+/* ---------- Plan parsing: tiny text format → data ------------------------
+   # Day name
+   Exercise name | 4x8        (also accepts "4 x 8", "4×8-10", "3x45s")
+   Exercise name              (no target → 3 sets, open reps)
+   // comment lines and blank lines are ignored
+--------------------------------------------------------------------------- */
+
+const TARGET_RE = /^(.*?)\s*(?:[|,—–]\s*)?(\d+)\s*[x×*]\s*([0-9][\w.\-–]*)\s*$/i;
+
+function parsePlan(text) {
+  const days = [];
+  const errors = [];
+  let current = null;
+
+  text.split(/\r?\n/).forEach((rawLine, i) => {
+    const line = rawLine.trim().replace(/^[-•*]\s+/, "");
+    if (!line || line.startsWith("//")) return;
+
+    if (line.startsWith("#")) {
+      const name = line.replace(/^#+\s*/, "").trim();
+      if (!name) { errors.push(`Line ${i + 1}: day heading has no name`); return; }
+      current = { name, exercises: [] };
+      days.push(current);
+      return;
+    }
+
+    if (!current) {
+      errors.push(`Line ${i + 1}: "${line}" is above any # Day heading`);
+      return;
+    }
+
+    const m = line.match(TARGET_RE);
+    if (m && m[1].trim()) {
+      current.exercises.push({ name: m[1].trim(), sets: clamp(+m[2], 1, 20), reps: m[3] });
+    } else {
+      current.exercises.push({ name: line.replace(/\s*\|\s*$/, ""), sets: 3, reps: "" });
+    }
+  });
+
+  days.forEach(d => { if (!d.exercises.length) errors.push(`"${d.name}" has no exercises`); });
+  if (!days.length) errors.push("No days found — start a day with a line like  # Push");
+  return { days, errors };
+}
+
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n || lo));
+
+/* ---------- Derived data (computed, never stored) ------------------------ */
+
+const plan = () => parsePlan(db.planText);
+
+function lastPerformance(exerciseName) {
+  const key = exerciseName.toLowerCase();
+  for (let i = db.sessions.length - 1; i >= 0; i--) {
+    const ex = db.sessions[i].exercises.find(e => e.name.toLowerCase() === key);
+    if (ex && ex.sets.length) return { date: db.sessions[i].date, sets: ex.sets };
+  }
+  return null;
+}
+
+function suggestedDayIndex(days) {
+  const last = db.sessions[db.sessions.length - 1];
+  if (!last) return 0;
+  const i = days.findIndex(d => d.name === last.day);
+  return i === -1 ? 0 : (i + 1) % days.length;
+}
+
+const volume = s => s.exercises.reduce((sum, e) =>
+  sum + e.sets.reduce((a, set) => a + (+set.w || 0) * (+set.r || 0), 0), 0);
+
+/* ---------- Actions (state transitions) ---------------------------------- */
+
+function startWorkout(dayIndex) {
+  const day = plan().days[dayIndex];
+  if (!day) return;
+  update(d => {
+    d.active = {
+      day: day.name,
+      startedAt: new Date().toISOString(),
+      notes: "",
+      exercises: day.exercises.map(ex => {
+        const last = lastPerformance(ex.name);
+        return {
+          name: ex.name,
+          target: { sets: ex.sets, reps: ex.reps },
+          // Placeholders come from last time; values stay empty until you type or tick.
+          sets: Array.from({ length: ex.sets }, (_, i) => ({
+            w: "", r: "", done: false,
+            hintW: last?.sets[i]?.w ?? last?.sets.at(-1)?.w ?? "",
+            hintR: last?.sets[i]?.r ?? last?.sets.at(-1)?.r ?? (String(ex.reps).match(/^\d+/)?.[0] ?? ""),
+          })),
+        };
+      }),
+    };
+  });
+  window.scrollTo(0, 0);
+}
+
+function toggleSet(ei, si) {
+  update(d => {
+    const set = d.active.exercises[ei].sets[si];
+    // Ticking an empty set accepts the suggested numbers — one tap for "same as last time".
+    if (!set.done) {
+      if (set.w === "") set.w = set.hintW;
+      if (set.r === "") set.r = set.hintR;
+    }
+    set.done = !set.done;
+  });
+}
+
+function finishWorkout() {
+  const a = db.active;
+  const exercises = a.exercises
+    .map(e => ({ name: e.name, sets: e.sets.filter(s => s.done).map(({ w, r }) => ({ w: +w || 0, r: +r || 0 })) }))
+    .filter(e => e.sets.length);
+
+  if (!exercises.length) {
+    if (!confirm("No sets ticked. Discard this workout?")) return;
+    update(d => { d.active = null; });
+    return;
+  }
+  const minutes = Math.round((Date.now() - new Date(a.startedAt)) / 60000);
+  update(d => {
+    d.sessions.push({
+      id: crypto.randomUUID?.() ?? String(Date.now()),
+      date: a.startedAt, day: a.day, minutes, notes: a.notes.trim(), exercises,
+    });
+    d.active = null;
+  });
+  ui.tab = "history";
+  render();
+  toast("Workout saved 💪");
+}
+
+/* ---------- Rendering ---------------------------------------------------- */
+
+const $app = document.getElementById("app");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDate = iso => new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+const fmtSets = sets => sets.map(s => `${fmtNum(s.w)}×${s.r}`).join(", ");
+const fmtNum = n => (n === "" || n == null) ? "–" : (+n % 1 ? (+n).toFixed(1) : String(+n));
+
+function render() {
+  document.querySelectorAll("#tabs button").forEach(b => {
+    if (b.dataset.tab === ui.tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+  const views = { workout: viewWorkout, history: viewHistory, plan: viewPlan, data: viewData };
+  $app.innerHTML = views[ui.tab]();
+  tickClock();
+}
+
+function setHeader(title, meta = "") {
+  document.getElementById("title").textContent = title;
+  document.getElementById("meta").textContent = meta;
+}
+
+function viewWorkout() {
+  if (db.active) return viewActive();
+  const { days, errors } = plan();
+  setHeader("Workout", `${db.sessions.length} logged`);
+  if (!days.length) {
+    return `<div class="empty">Your plan is empty or has errors.<br><br>
+      <button class="btn primary" data-action="go" data-tab="plan">Edit plan</button></div>`;
+  }
+  const next = suggestedDayIndex(days);
+  const last = db.sessions.at(-1);
+  return `
+    ${errors.length ? `<div class="card small" style="border-color:var(--danger)">Plan has issues — check the Plan tab.</div>` : ""}
+    <h2>Start a workout</h2>
+    <div class="days">
+      ${days.map((d, i) => `
+        <button class="day ${i === next ? "next" : ""}" data-action="start" data-day="${i}">
+          <div class="row spread"><h3>${esc(d.name)}</h3>${i === next ? `<span class="tag">Up next</span>` : ""}</div>
+          <div class="muted small" style="margin-top:4px">${d.exercises.map(e => esc(e.name)).join(" · ")}</div>
+        </button>`).join("")}
+    </div>
+    ${last ? `<p class="muted small" style="margin-top:18px">Last: ${esc(last.day)} on ${fmtDate(last.date)}</p>` : ""}`;
+}
+
+function viewActive() {
+  const a = db.active;
+  setHeader(a.day, "");
+  const u = db.units;
+  return `
+    ${a.exercises.map((ex, ei) => {
+      const last = lastPerformance(ex.name);
+      const doneCount = ex.sets.filter(s => s.done).length;
+      return `
+      <section class="card">
+        <div class="ex-head">
+          <h3>${esc(ex.name)}</h3>
+          <span class="target num">${doneCount}/${ex.sets.length} · ${ex.target.sets}×${esc(ex.target.reps || "?")}</span>
+        </div>
+        <div class="last num">${last ? `Last (${fmtDate(last.date)}): ${fmtSets(last.sets)}` : "First time — set a baseline"}</div>
+        <div class="set-labels"><span>#</span><span>${u}</span><span>reps</span><span></span></div>
+        <div class="sets">
+          ${ex.sets.map((s, si) => `
+            <div class="set ${s.done ? "done" : ""}">
+              <span class="idx num">${si + 1}</span>
+              <input inputmode="decimal" enterkeyhint="next" aria-label="Set ${si + 1} weight"
+                     data-field="w" data-ei="${ei}" data-si="${si}" value="${esc(s.w)}" placeholder="${esc(fmtNum(s.hintW) === "–" ? "" : fmtNum(s.hintW))}">
+              <input inputmode="numeric" enterkeyhint="done" aria-label="Set ${si + 1} reps"
+                     data-field="r" data-ei="${ei}" data-si="${si}" value="${esc(s.r)}" placeholder="${esc(s.hintR)}">
+              <button class="check" data-action="toggle" data-ei="${ei}" data-si="${si}" aria-label="Mark set ${si + 1} done" aria-pressed="${s.done}">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
+              </button>
+            </div>`).join("")}
+        </div>
+        <div class="ex-actions">
+          <button class="btn ghost" data-action="add-set" data-ei="${ei}">+ Set</button>
+          <button class="btn ghost" data-action="remove-set" data-ei="${ei}" ${ex.sets.length <= 1 ? "disabled" : ""}>− Set</button>
+        </div>
+      </section>`;
+    }).join("")}
+    <h2>Notes</h2>
+    <textarea class="notes" data-field="notes" placeholder="How did it feel? Anything to change next time?">${esc(a.notes)}</textarea>
+    <div style="display:grid; gap:10px; margin-top:16px">
+      <button class="btn primary block" data-action="finish">Finish workout</button>
+      <button class="btn ghost danger block" data-action="discard">Discard</button>
+    </div>
+    <p class="muted small" style="text-align:center">Tip: tap ✓ on an empty set to accept last time's numbers.</p>`;
+}
+
+function viewHistory() {
+  setHeader("History", db.sessions.length ? `${db.sessions.length} workouts` : "");
+  if (!db.sessions.length) return `<div class="empty">No workouts yet.<br>Finish one and it shows up here.</div>`;
+  return [...db.sessions].reverse().map(s => `
+    <details class="card session" ${ui.openSession === s.id ? "open" : ""} data-session="${esc(s.id)}">
+      <summary>
+        <div class="row spread">
+          <h3>${esc(s.day)}</h3>
+          <span class="muted small">${fmtDate(s.date)}</span>
+        </div>
+        <div class="row small muted" style="margin-top:6px; gap:8px; flex-wrap:wrap">
+          <span class="pill num">${s.exercises.length} exercises</span>
+          <span class="pill num">${s.exercises.reduce((n, e) => n + e.sets.length, 0)} sets</span>
+          <span class="pill num">${Math.round(volume(s)).toLocaleString()} ${db.units} volume</span>
+          ${s.minutes ? `<span class="pill num">${s.minutes} min</span>` : ""}
+        </div>
+      </summary>
+      ${s.exercises.map(e => `
+        <div class="session-ex"><strong>${esc(e.name)}</strong><br><span class="sets-line num">${fmtSets(e.sets)}</span></div>`).join("")}
+      ${s.notes ? `<p class="small" style="margin:12px 0 0; white-space:pre-wrap">${esc(s.notes)}</p>` : ""}
+      <div style="text-align:right"><button class="link" data-action="delete-session" data-id="${esc(s.id)}">Delete</button></div>
+    </details>`).join("");
+}
+
+function viewPlan() {
+  setHeader("Plan");
+  const text = ui.planDraft ?? db.planText;
+  const { days, errors } = parsePlan(text);
+  const dirty = ui.planDraft !== null && ui.planDraft !== db.planText;
+  return `
+    <p class="muted small">One <code># Day</code> heading per workout, then one exercise per line as
+      <code>Name | sets x reps</code>. Paste your plan in and adjust.</p>
+    <textarea data-field="plan" spellcheck="false" autocapitalize="off">${esc(text)}</textarea>
+    ${errors.length ? `<ul class="errors">${errors.map(e => `<li>${esc(e)}</li>`).join("")}</ul>`
+                    : `<p class="muted small">✓ ${days.length} days, ${days.reduce((n, d) => n + d.exercises.length, 0)} exercises</p>`}
+    <div style="display:grid; gap:10px; margin-top:12px">
+      <button class="btn primary block" data-action="save-plan" ${!dirty || errors.length ? "disabled" : ""}>Save plan</button>
+      ${dirty ? `<button class="btn ghost block" data-action="revert-plan">Revert changes</button>` : ""}
+    </div>
+    ${db.active ? `<p class="muted small">Changes apply to your next workout, not the one in progress.</p>` : ""}`;
+}
+
+function viewData() {
+  setHeader("Data");
+  return `
+    <h2>Units</h2>
+    <div class="seg" role="group" aria-label="Weight units">
+      ${["kg", "lb"].map(u => `<button data-action="units" data-units="${u}" aria-pressed="${db.units === u}">${u}</button>`).join("")}
+    </div>
+    <p class="muted small">Only changes the label — numbers aren't converted.</p>
+
+    <h2>Backup</h2>
+    <p class="muted small">Everything is stored on this device only. Export a backup now and then,
+      especially before clearing browser data or switching phones.</p>
+    <div style="display:grid; gap:10px">
+      <button class="btn primary block" data-action="export">Export backup (.json)</button>
+      <button class="btn block" data-action="import">Import backup</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+
+    <h2>Danger zone</h2>
+    <button class="btn ghost danger block" data-action="reset">Erase all data</button>
+    <p class="muted small" style="margin-top:24px">${db.sessions.length} workouts stored · schema v${db.version}</p>`;
+}
+
+/* ---------- Event handling (delegated: one listener, not one per button) -- */
+
+$app.addEventListener("click", e => {
+  const el = e.target.closest("[data-action]");
+  if (!el || el.disabled) return;
+  const { action } = el.dataset;
+  const ei = +el.dataset.ei, si = +el.dataset.si;
+
+  switch (action) {
+    case "go": ui.tab = el.dataset.tab; render(); break;
+    case "start": startWorkout(+el.dataset.day); break;
+    case "toggle": toggleSet(ei, si); break;
+    case "add-set": update(d => {
+      const sets = d.active.exercises[ei].sets, prev = sets.at(-1) ?? {};
+      sets.push({ w: "", r: "", done: false, hintW: prev.w || prev.hintW || "", hintR: prev.r || prev.hintR || "" });
+    }); break;
+    case "remove-set": update(d => { d.active.exercises[ei].sets.pop(); }); break;
+    case "finish": finishWorkout(); break;
+    case "discard":
+      if (confirm("Discard this workout? Nothing will be saved.")) update(d => { d.active = null; });
+      break;
+    case "delete-session":
+      if (confirm("Delete this workout from history?")) update(d => { d.sessions = d.sessions.filter(s => s.id !== el.dataset.id); });
+      break;
+    case "save-plan":
+      update(d => { d.planText = ui.planDraft; }, { rerender: false });
+      ui.planDraft = null; render(); toast("Plan saved");
+      break;
+    case "revert-plan": ui.planDraft = null; render(); break;
+    case "units": update(d => { d.units = el.dataset.units; }); break;
+    case "export": exportBackup(); break;
+    case "import": document.getElementById("importFile").click(); break;
+    case "reset":
+      if (confirm("Erase ALL workouts and your plan? Export a backup first if unsure.") && confirm("Really erase everything?")) {
+        db = freshDb(); saveDb(); ui.tab = "workout"; render(); toast("All data erased");
+      }
+      break;
+  }
+});
+
+// Typing updates state silently (no re-render → keyboard keeps focus).
+$app.addEventListener("input", e => {
+  const el = e.target, f = el.dataset.field;
+  if (!f) return;
+  if (f === "plan") {
+    ui.planDraft = el.value;
+    clearTimeout(ui.planTimer);
+    ui.planTimer = setTimeout(() => { // re-validate after a pause, keep cursor position
+      const pos = [el.selectionStart, el.selectionEnd], scroll = el.scrollTop;
+      render();
+      const ta = $app.querySelector('textarea[data-field="plan"]');
+      ta.focus(); ta.setSelectionRange(...pos); ta.scrollTop = scroll;
+    }, 500);
+    return;
+  }
+  update(d => {
+    if (f === "notes") d.active.notes = el.value;
+    else d.active.exercises[+el.dataset.ei].sets[+el.dataset.si][f] = el.value.replace(",", ".");
+  }, { rerender: false });
+});
+
+$app.addEventListener("toggle", e => {
+  if (e.target.matches("details.session")) ui.openSession = e.target.open ? e.target.dataset.session : null;
+}, true);
+
+$app.addEventListener("change", e => {
+  if (e.target.id !== "importFile") return;
+  const file = e.target.files[0];
+  if (!file) return;
+  file.text().then(txt => {
+    const data = JSON.parse(txt);
+    if (!Array.isArray(data.sessions) || typeof data.planText !== "string") throw new Error("Not a Gym Tracker backup");
+    if (!confirm(`Replace current data with backup (${data.sessions.length} workouts)?`)) return;
+    db = migrate(data); saveDb(); render(); toast("Backup restored");
+  }).catch(err => toast(err.message || "Couldn't read that file"));
+});
+
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest("button[data-tab]");
+  if (!b) return;
+  ui.tab = b.dataset.tab; render(); window.scrollTo(0, 0);
+});
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `gym-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- Small helpers ------------------------------------------------ */
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2000);
+}
+
+// Elapsed-time clock in the header while a workout is running.
+function tickClock() {
+  if (!db.active || ui.tab !== "workout") return;
+  const mins = Math.floor((Date.now() - new Date(db.active.startedAt)) / 60000);
+  document.getElementById("meta").textContent = `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, "0")} elapsed`;
+}
+setInterval(tickClock, 15000);
+
+render();
+
+// Offline support: cache the app so it opens at the gym with no signal.
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>
