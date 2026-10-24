@@ -1,7 +1,7 @@
 // Service worker: makes the app open with zero signal.
 // Strategy: serve from cache instantly, refresh the cache from the network in the background
 // ("stale-while-revalidate"). Bump CACHE when you want to force a clean update.
-const CACHE = "gym-tracker-v1";
+const CACHE = "gym-tracker-v2";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", e => {

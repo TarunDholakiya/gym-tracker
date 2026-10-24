@@ -189,23 +189,65 @@
 
 const STORAGE_KEY = "gym-tracker:v1";
 
-const SAMPLE_PLAN = `# Push
-Bench Press | 4x8
-Overhead Press | 3x10
+const SAMPLE_PLAN = `# Chest & Triceps @ Mon, Thu
+Warm-up | 1x10min
+// Cardio
+Jumping Jacks | 3x30
+High Knees | 3x30
+Mountain Climbers | 3x30
+// Chest
+Machine Seated Chest Press | 3x12
 Incline Dumbbell Press | 3x10
-Triceps Pushdown | 3x12
+Chest Fly Machine | 3x15
+// Triceps
+Overhead Triceps Extension | 3x12
+Close-Grip Dumbbell Press | 3x12
+Triceps Dips | 3x10
+// Abs
+Seated Ab Bench Crunches | 3x30
+Seated Ab Bench Leg Raises | 3x30
+Standing Dumbbell Side Bend | 3x30
+// Finisher
+Treadmill (speed 5, incline 8) | 1x30min
 
-# Pull
-Deadlift | 3x5
-Pull-ups | 4x8
-Barbell Row | 3x10
-Biceps Curl | 3x12
+# Back & Biceps @ Tue, Fri
+Warm-up | 1x10min
+// Cardio
+Jumping Jacks | 3x30
+High Knees | 3x30
+Mountain Climbers | 3x30
+// Back
+Lat Pulldown, Wide Grip | 3x12
+Lat Pulldown, Reverse Grip | 3x12
+Lat Pulldown, Rowing Bar | 3x12
+Good Morning | 3x15
+// Biceps
+Dumbbell Curl | 3x10
+Dumbbell Hammer Curl | 3x10
+Dumbbell Wrist Curl | 3x15
+// Abs
+Seated Ab Bench Crunches | 3x30
+Seated Ab Bench Leg Raises | 3x30
+Standing Dumbbell Side Bend | 3x30
+// Finisher
+Treadmill (speed 5, incline 8) | 1x30min
 
-# Legs
-Squat | 4x8
-Romanian Deadlift | 3x10
-Leg Press | 3x12
-Calf Raise | 4x15`;
+# Legs & Shoulders @ Wed, Sat
+Warm-up | 1x10min
+// Legs
+Dumbbell Sissy Squat | 3x15
+Dumbbell Wide Squat | 3x15
+Dumbbell Romanian Deadlift | 3x10
+Standing Calf Raise | 4x20
+// Shoulders
+Dumbbell Shoulder Press | 3x12
+Dumbbell Lateral Raise | 3x10
+Dumbbell Front Raise | 3x10
+Dumbbell Shrugs | 3x15
+// Finisher
+Cross Trainer | 1x20min`;
+
+const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 /* ---------- Persistence -------------------------------------------------- */
 
@@ -263,15 +305,29 @@ function parsePlan(text) {
   const days = [];
   const errors = [];
   let current = null;
+  let section = "";
 
   text.split(/\r?\n/).forEach((rawLine, i) => {
     const line = rawLine.trim().replace(/^[-•*]\s+/, "");
-    if (!line || line.startsWith("//")) return;
+    if (!line) return;
+    if (line.startsWith("//")) {            // "// Chest" → section label for the lines below
+      if (current) section = line.replace(/^\/\/\s*/, "").trim();
+      return;
+    }
 
     if (line.startsWith("#")) {
-      const name = line.replace(/^#+\s*/, "").trim();
+      // "# Chest & Triceps @ Mon, Thu" → name + weekdays [1, 4]
+      const [rawName, rawDays = ""] = line.replace(/^#+\s*/, "").split("@");
+      const name = rawName.trim();
       if (!name) { errors.push(`Line ${i + 1}: day heading has no name`); return; }
-      current = { name, exercises: [] };
+      const weekdays = [];
+      rawDays.split(/[\s,/]+/).filter(Boolean).forEach(tok => {
+        const wd = WEEKDAYS.indexOf(tok.slice(0, 3).toLowerCase());
+        if (wd === -1) errors.push(`Line ${i + 1}: "${tok}" isn't a weekday (use Mon, Tue, …)`);
+        else weekdays.push(wd);
+      });
+      current = { name, weekdays, exercises: [] };
+      section = "";
       days.push(current);
       return;
     }
@@ -283,9 +339,9 @@ function parsePlan(text) {
 
     const m = line.match(TARGET_RE);
     if (m && m[1].trim()) {
-      current.exercises.push({ name: m[1].trim(), sets: clamp(+m[2], 1, 20), reps: m[3] });
+      current.exercises.push({ name: m[1].trim(), sets: clamp(+m[2], 1, 20), reps: m[3], section });
     } else {
-      current.exercises.push({ name: line.replace(/\s*\|\s*$/, ""), sets: 3, reps: "" });
+      current.exercises.push({ name: line.replace(/\s*\|\s*$/, ""), sets: 3, reps: "", section });
     }
   });
 
@@ -309,11 +365,22 @@ function lastPerformance(exerciseName) {
   return null;
 }
 
-function suggestedDayIndex(days) {
+// Scheduled plans (headings with @ weekdays) pick today's day, or -1 on a rest day.
+// Unscheduled plans fall back to "the day after the last one you did".
+function suggestedDayIndex(days, today = new Date().getDay()) {
+  if (days.some(d => d.weekdays.length)) return days.findIndex(d => d.weekdays.includes(today));
   const last = db.sessions[db.sessions.length - 1];
   if (!last) return 0;
   const i = days.findIndex(d => d.name === last.day);
   return i === -1 ? 0 : (i + 1) % days.length;
+}
+
+// Home-screen summary: section names if the plan has them, else the first few exercises.
+function preview(day) {
+  const sections = [...new Set(day.exercises.map(e => e.section).filter(Boolean))];
+  if (sections.length) return sections.join(" · ");
+  const names = day.exercises.map(e => e.name);
+  return names.slice(0, 4).join(" · ") + (names.length > 4 ? " …" : "");
 }
 
 const volume = s => s.exercises.reduce((sum, e) =>
@@ -333,6 +400,7 @@ function startWorkout(dayIndex) {
         const last = lastPerformance(ex.name);
         return {
           name: ex.name,
+          section: ex.section,
           target: { sets: ex.sets, reps: ex.reps },
           // Placeholders come from last time; values stay empty until you type or tick.
           sets: Array.from({ length: ex.sets }, (_, i) => ({
@@ -388,7 +456,8 @@ function finishWorkout() {
 const $app = document.getElementById("app");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = iso => new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-const fmtSets = sets => sets.map(s => `${fmtNum(s.w)}×${s.r}`).join(", ");
+// Bodyweight / timed sets have no weight, so show just the count.
+const fmtSets = sets => sets.map(s => (+s.w ? `${fmtNum(s.w)}×${s.r}` : `${s.r}`)).join(", ");
 const fmtNum = n => (n === "" || n == null) ? "–" : (+n % 1 ? (+n).toFixed(1) : String(+n));
 
 function render() {
@@ -414,15 +483,19 @@ function viewWorkout() {
       <button class="btn primary" data-action="go" data-tab="plan">Edit plan</button></div>`;
   }
   const next = suggestedDayIndex(days);
+  const scheduled = days.some(d => d.weekdays.length);
   const last = db.sessions.at(-1);
+  const dayLabel = d => d.weekdays.map(w => WEEKDAYS[w][0].toUpperCase() + WEEKDAYS[w].slice(1)).join(" · ");
   return `
     ${errors.length ? `<div class="card small" style="border-color:var(--danger)">Plan has issues — check the Plan tab.</div>` : ""}
+    ${scheduled && next === -1 ? `<div class="card small">Rest day today 🛌 — or pick any workout below.</div>` : ""}
     <h2>Start a workout</h2>
     <div class="days">
       ${days.map((d, i) => `
         <button class="day ${i === next ? "next" : ""}" data-action="start" data-day="${i}">
-          <div class="row spread"><h3>${esc(d.name)}</h3>${i === next ? `<span class="tag">Up next</span>` : ""}</div>
-          <div class="muted small" style="margin-top:4px">${d.exercises.map(e => esc(e.name)).join(" · ")}</div>
+          <div class="row spread"><h3>${esc(d.name)}</h3>${i === next ? `<span class="tag">${scheduled ? "Today" : "Up next"}</span>` : ""}</div>
+          ${d.weekdays.length ? `<div class="small" style="margin-top:2px; font-weight:600">${dayLabel(d)}</div>` : ""}
+          <div class="muted small" style="margin-top:4px">${d.exercises.length} exercises · ${esc(preview(d))}</div>
         </button>`).join("")}
     </div>
     ${last ? `<p class="muted small" style="margin-top:18px">Last: ${esc(last.day)} on ${fmtDate(last.date)}</p>` : ""}`;
@@ -434,16 +507,17 @@ function viewActive() {
   const u = db.units;
   return `
     ${a.exercises.map((ex, ei) => {
+      const newSection = ex.section && ex.section !== a.exercises[ei - 1]?.section;
       const last = lastPerformance(ex.name);
       const doneCount = ex.sets.filter(s => s.done).length;
-      return `
+      return `${newSection ? `<h2>${esc(ex.section)}</h2>` : ""}
       <section class="card">
         <div class="ex-head">
           <h3>${esc(ex.name)}</h3>
           <span class="target num">${doneCount}/${ex.sets.length} · ${ex.target.sets}×${esc(ex.target.reps || "?")}</span>
         </div>
         <div class="last num">${last ? `Last (${fmtDate(last.date)}): ${fmtSets(last.sets)}` : "First time — set a baseline"}</div>
-        <div class="set-labels"><span>#</span><span>${u}</span><span>reps</span><span></span></div>
+        <div class="set-labels"><span>#</span><span>${u}</span><span>${/min$/i.test(ex.target.reps) ? "min" : "reps"}</span><span></span></div>
         <div class="sets">
           ${ex.sets.map((s, si) => `
             <div class="set ${s.done ? "done" : ""}">
@@ -502,8 +576,9 @@ function viewPlan() {
   const { days, errors } = parsePlan(text);
   const dirty = ui.planDraft !== null && ui.planDraft !== db.planText;
   return `
-    <p class="muted small">One <code># Day</code> heading per workout, then one exercise per line as
-      <code>Name | sets x reps</code>. Paste your plan in and adjust.</p>
+    <p class="muted small">One <code># Day @ Mon, Thu</code> heading per workout (the <code>@</code> part is optional),
+      then one exercise per line as <code>Name | sets x reps</code>. Timed work: <code>1x30min</code>.
+      Lines starting <code>//</code> are notes.</p>
     <textarea data-field="plan" spellcheck="false" autocapitalize="off">${esc(text)}</textarea>
     ${errors.length ? `<ul class="errors">${errors.map(e => `<li>${esc(e)}</li>`).join("")}</ul>`
                     : `<p class="muted small">✓ ${days.length} days, ${days.reduce((n, d) => n + d.exercises.length, 0)} exercises</p>`}
