@@ -139,6 +139,7 @@
     background: var(--surface-2); color: var(--muted); display: grid; place-items: center;
   }
   .set.done .check { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .set.noweight, .set-labels.noweight { grid-template-columns: 28px 1fr var(--tap); }
   .set-labels { display: grid; grid-template-columns: 28px 1fr 1fr var(--tap); gap: 8px; padding: 0 4px; font-size: 12px; color: var(--muted); text-align: center; }
   .ex-actions { display: flex; gap: 6px; margin-top: 8px; }
   .ex-actions button { flex: 1; min-height: 38px; font-size: 14px; }
@@ -224,9 +225,9 @@ const STORAGE_KEY = "gym-tracker:v1";
 const SAMPLE_PLAN = `# Chest & Triceps @ Mon, Thu
 Warm-up | 1x10min
 // Cardio
-Jumping Jacks | 3x30
-High Knees | 3x30
-Mountain Climbers | 3x30
+Jumping Jacks | 3x30 bw
+High Knees | 3x30 bw
+Mountain Climbers | 3x30 bw
 // Chest
 Machine Seated Chest Press | 3x12
 Incline Dumbbell Press | 3x10
@@ -234,10 +235,10 @@ Chest Fly Machine | 3x15
 // Triceps
 Overhead Triceps Extension | 3x12
 Close-Grip Dumbbell Press | 3x12
-Triceps Dips | 3x10
+Triceps Dips | 3x10 bw
 // Abs
-Seated Ab Bench Crunches | 3x30
-Seated Ab Bench Leg Raises | 3x30
+Seated Ab Bench Crunches | 3x30 bw
+Seated Ab Bench Leg Raises | 3x30 bw
 Standing Dumbbell Side Bend | 3x30
 // Finisher
 Treadmill (speed 5, incline 8) | 1x30min
@@ -245,9 +246,9 @@ Treadmill (speed 5, incline 8) | 1x30min
 # Back & Biceps @ Tue, Fri
 Warm-up | 1x10min
 // Cardio
-Jumping Jacks | 3x30
-High Knees | 3x30
-Mountain Climbers | 3x30
+Jumping Jacks | 3x30 bw
+High Knees | 3x30 bw
+Mountain Climbers | 3x30 bw
 // Back
 Lat Pulldown, Wide Grip | 3x12
 Lat Pulldown, Reverse Grip | 3x12
@@ -258,8 +259,8 @@ Dumbbell Curl | 3x10
 Dumbbell Hammer Curl | 3x10
 Dumbbell Wrist Curl | 3x15
 // Abs
-Seated Ab Bench Crunches | 3x30
-Seated Ab Bench Leg Raises | 3x30
+Seated Ab Bench Crunches | 3x30 bw
+Seated Ab Bench Leg Raises | 3x30 bw
 Standing Dumbbell Side Bend | 3x30
 // Finisher
 Treadmill (speed 5, incline 8) | 1x30min
@@ -284,7 +285,7 @@ const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 /* ---------- Persistence -------------------------------------------------- */
 
 function freshDb() {
-  return { version: 1, units: "kg", planText: SAMPLE_PLAN, sessions: [], active: null };
+  return { version: 2, units: "kg", planText: SAMPLE_PLAN, sessions: [], active: null };
 }
 
 function loadDb() {
@@ -302,6 +303,11 @@ function loadDb() {
 function migrate(data) {
   const db = { ...freshDb(), ...data };
   if (!Array.isArray(db.sessions)) db.sessions = [];
+  if ((data.version ?? 1) < 2) {
+    // v2 added "bw" markers. Upgrade the built-in plan only if the user never edited it.
+    if (db.planText === SAMPLE_PLAN.replace(/ bw$/gm, "")) db.planText = SAMPLE_PLAN;
+    db.version = 2;
+  }
   return db;
 }
 
@@ -331,7 +337,13 @@ function update(fn, { rerender = true } = {}) {
    // comment lines and blank lines are ignored
 --------------------------------------------------------------------------- */
 
-const TARGET_RE = /^(.*?)\s*(?:[|,—–]\s*)?(\d+)\s*[x×*]\s*([0-9][\w.\-–]*)\s*$/i;
+const TARGET_RE = /^(.*?)\s*(?:[|,—–]\s*)?(\d+)\s*[x×*]\s*([0-9][\w.\-–]*)(?:\s+(bw))?\s*$/i;
+
+// Three kinds of exercise, decided by the target:
+//   "3x12"      → weight  (kg + reps)
+//   "3x30 bw"   → bw      (bodyweight: reps only)
+//   "1x30min"   → time    (minutes only)
+const kindOf = (reps, bw) => /min$/i.test(reps) ? "time" : bw ? "bw" : "weight";
 
 function parsePlan(text) {
   const days = [];
@@ -371,9 +383,9 @@ function parsePlan(text) {
 
     const m = line.match(TARGET_RE);
     if (m && m[1].trim()) {
-      current.exercises.push({ name: m[1].trim(), sets: clamp(+m[2], 1, 20), reps: m[3], section });
+      current.exercises.push({ name: m[1].trim(), sets: clamp(+m[2], 1, 20), reps: m[3], kind: kindOf(m[3], m[4]), section });
     } else {
-      current.exercises.push({ name: line.replace(/\s*\|\s*$/, ""), sets: 3, reps: "", section });
+      current.exercises.push({ name: line.replace(/\s*\|\s*$/, ""), sets: 3, reps: "", kind: "weight", section });
     }
   });
 
@@ -433,6 +445,7 @@ function startWorkout(dayIndex) {
         return {
           name: ex.name,
           section: ex.section,
+          kind: ex.kind,
           target: { sets: ex.sets, reps: ex.reps },
           // Placeholders come from last time; values stay empty until you type or tick.
           sets: Array.from({ length: ex.sets }, (_, i) => ({
@@ -462,7 +475,7 @@ function toggleSet(ei, si) {
 async function finishWorkout() {
   const a = db.active;
   const exercises = a.exercises
-    .map(e => ({ name: e.name, sets: e.sets.filter(s => s.done).map(({ w, r }) => ({ w: +w || 0, r: +r || 0 })) }))
+    .map(e => ({ name: e.name, kind: e.kind, sets: e.sets.filter(s => s.done).map(({ w, r }) => ({ w: +w || 0, r: +r || 0 })) }))
     .filter(e => e.sets.length);
 
   if (!exercises.length) {
@@ -489,7 +502,10 @@ const $app = document.getElementById("app");
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = iso => new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 // Bodyweight / timed sets have no weight, so show just the count.
-const fmtSets = sets => sets.map(s => (+s.w ? `${fmtNum(s.w)}×${s.r}` : `${s.r}`)).join(", ");
+const fmtSets = (sets, kind) => kind === "time"
+  ? sets.map(s => `${s.r} min`).join(", ")
+  : sets.map(s => (+s.w ? `${fmtNum(s.w)}×${s.r}` : `${s.r}`)).join(", ");
+const repsLabel = { weight: "reps", bw: "reps", time: "min" };
 const fmtNum = n => (n === "" || n == null) ? "–" : (+n % 1 ? (+n).toFixed(1) : String(+n));
 
 function render() {
@@ -542,21 +558,22 @@ function viewActive() {
       const newSection = ex.section && ex.section !== a.exercises[ei - 1]?.section;
       const last = lastPerformance(ex.name);
       const doneCount = ex.sets.filter(s => s.done).length;
+      const kind = ex.kind || "weight", weighted = kind === "weight";
       return `${newSection ? `<h2>${esc(ex.section)}</h2>` : ""}
       <section class="card">
         <div class="ex-head">
           <h3>${esc(ex.name)}</h3>
           <span class="target num">${doneCount}/${ex.sets.length} · ${ex.target.sets}×${esc(ex.target.reps || "?")}</span>
         </div>
-        <div class="last num">${last ? `Last (${fmtDate(last.date)}): ${fmtSets(last.sets)}` : "First time — set a baseline"}</div>
-        <div class="set-labels"><span>#</span><span>${u}</span><span>${/min$/i.test(ex.target.reps) ? "min" : "reps"}</span><span></span></div>
+        <div class="last num">${last ? `Last (${fmtDate(last.date)}): ${fmtSets(last.sets, kind)}` : "First time — set a baseline"}</div>
+        <div class="set-labels ${weighted ? "" : "noweight"}"><span>#</span>${weighted ? `<span>${u}</span>` : ""}<span>${repsLabel[kind]}</span><span></span></div>
         <div class="sets">
           ${ex.sets.map((s, si) => `
-            <div class="set ${s.done ? "done" : ""}">
+            <div class="set ${s.done ? "done" : ""} ${weighted ? "" : "noweight"}">
               <span class="idx num">${si + 1}</span>
-              <input inputmode="decimal" enterkeyhint="next" aria-label="Set ${si + 1} weight"
-                     data-field="w" data-ei="${ei}" data-si="${si}" value="${esc(s.w)}" placeholder="${esc(fmtNum(s.hintW) === "–" ? "" : fmtNum(s.hintW))}">
-              <input inputmode="numeric" enterkeyhint="done" aria-label="Set ${si + 1} reps"
+              ${weighted ? `<input inputmode="decimal" enterkeyhint="next" aria-label="Set ${si + 1} weight"
+                     data-field="w" data-ei="${ei}" data-si="${si}" value="${esc(s.w)}" placeholder="${esc(fmtNum(s.hintW) === "–" ? "" : fmtNum(s.hintW))}">` : ""}
+              <input inputmode="numeric" enterkeyhint="done" aria-label="Set ${si + 1} ${repsLabel[kind]}"
                      data-field="r" data-ei="${ei}" data-si="${si}" value="${esc(s.r)}" placeholder="${esc(s.hintR)}">
               <button class="check" data-action="toggle" data-ei="${ei}" data-si="${si}" aria-label="Mark set ${si + 1} done" aria-pressed="${s.done}">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>
@@ -596,7 +613,7 @@ function viewHistory() {
         </div>
       </summary>
       ${s.exercises.map(e => `
-        <div class="session-ex"><strong>${esc(e.name)}</strong><br><span class="sets-line num">${fmtSets(e.sets)}</span></div>`).join("")}
+        <div class="session-ex"><strong>${esc(e.name)}</strong><br><span class="sets-line num">${fmtSets(e.sets, e.kind)}</span></div>`).join("")}
       ${s.notes ? `<p class="small" style="margin:12px 0 0; white-space:pre-wrap">${esc(s.notes)}</p>` : ""}
       <div style="text-align:right"><button class="link" data-action="delete-session" data-id="${esc(s.id)}">Delete</button></div>
     </details>`).join("");
@@ -609,7 +626,7 @@ function viewPlan() {
   const dirty = ui.planDraft !== null && ui.planDraft !== db.planText;
   return `
     <p class="muted small">One <code># Day @ Mon, Thu</code> heading per workout (the <code>@</code> part is optional),
-      then one exercise per line as <code>Name | sets x reps</code>. Timed work: <code>1x30min</code>.
+      then one exercise per line as <code>Name | sets x reps</code>. Bodyweight: <code>3x30 bw</code> (no kg). Timed: <code>1x30min</code>.
       Lines starting <code>//</code> are notes.</p>
     <textarea data-field="plan" spellcheck="false" autocapitalize="off">${esc(text)}</textarea>
     ${errors.length ? `<ul class="errors">${errors.map(e => `<li>${esc(e)}</li>`).join("")}</ul>`
